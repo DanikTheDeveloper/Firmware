@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <termios.h>
 
-// Assuming the UART4 for sensor and eth0 for ethernet
 #define UART4 "/dev/ttyO4"
 #define BUFFER_SIZE 256
 #define SERVER_URL "http://ballard.com/api/data"
