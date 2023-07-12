@@ -1,85 +1,83 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <cstring>
 
-constexpr auto UART4 = "/dev/ttyO4";
-constexpr auto BUFFER_SIZE = 256;
-constexpr auto SERVER_URL = "http://ballard.com/api/data";
+#define UART_PATH "/dev/ttyO4"
+#define MAX_SIZE 256
+#define WEB_SERVER "http://ballard.com/api/data"
 
-int uart4_filestream = -1;
+int uartConnection = -1;
 
-void setup_uart()
+void init_uart() // function to initialize UART
 {
-    uart4_filestream = open(UART4, O_RDWR | O_NOCTTY);
-    if (uart4_filestream == -1)
+    uartConnection = open(UART_PATH, O_RDWR | O_NOCTTY);
+    if (uartConnection == -1)
     {
-        std::cerr << "Failed to open UART." << std::endl;
-        return;
+        printf("Oops! Failed to open UART.\n");
     }
 
     struct termios options;
-    tcgetattr(uart4_filestream, &options);
-    options.c_cflag = B9600 | CS8 | CLOCAL | CREAD;   // Set baud rate
+    tcgetattr(uartConnection, &options);
+    options.c_cflag = B9600 | CS8 | CLOCAL | CREAD;   // setting baud rate
     options.c_iflag = IGNPAR;
     options.c_oflag = 0;
     options.c_lflag = 0;
-    tcflush(uart4_filestream, TCIFLUSH);
-    tcsetattr(uart4_filestream, TCSANOW, &options);
+    tcflush(uartConnection, TCIFLUSH);
+    tcsetattr(uartConnection, TCSANOW, &options);
 }
 
-void read_sensor_data(float &fuel_consumption)
+void read_data(float *sensor_data) // function to read sensor data
 {
-    if (uart4_filestream != -1)
+    if (uartConnection != -1)
     {
-        char rx_buffer[BUFFER_SIZE];
-        int rx_length = read(uart4_filestream, static_cast<void*>(rx_buffer), BUFFER_SIZE - 1);
+        unsigned char buffer[MAX_SIZE];
+        int len = read(uartConnection, (void*)buffer, MAX_SIZE - 1);
 
-        if (rx_length < 0)
+        if (len < 0)
         {
-            std::cerr << "UART RX error" << std::endl;
+            printf("UART RX error\n");
         }
-        else if (rx_length == 0)
+        else if (len == 0)
         {
-            std::cerr << "No data received." << std::endl;
+            printf("No data received.\n");
         }
         else
         {
-            rx_buffer[rx_length] = '\0';
-            std::cout << rx_length << " bytes read : " << rx_buffer << std::endl;
+            buffer[len] = '\0';
+            printf("Read %i bytes : %s\n", len, buffer);
             
-            // Assuming sensor data is a float string
-            fuel_consumption = std::stof(rx_buffer);
+            // assuming sensor data is a float string
+            *sensor_data = atof(buffer);
         }
     }
 }
 
-void send_data_over_ethernet(float fuel_consumption)
+void send_data(float sensor_data) // function to send data over Ethernet
 {
-    std::stringstream command;
-    command << "curl -X POST -H \"Content-Type: application/json\" -d '{\"fuel_consumption\":" << fuel_consumption << "}' " << SERVER_URL;
-    system(command.str().c_str());
+    char command[MAX_SIZE];
+
+    snprintf(command, sizeof(command), "curl -X POST -H \"Content-Type: application/json\" -d '{\"sensor_data\":%f}' %s", sensor_data, WEB_SERVER);
+    system(command);
 }
 
 int main()
 {
-    float fuel_consumption;
+    float sensor_data;
 
-    setup_uart();
+    init_uart(); // initialize UART
     
     while (1)
     {
-        read_sensor_data(fuel_consumption);
-        send_data_over_ethernet(fuel_consumption);
+        read_data(&sensor_data); // read sensor data
+        send_data(sensor_data); // send data
 
-        sleep(1); // Wait for 1 second before reading again
+        sleep(1); // wait for 1 second before reading again
     }
     
-    close(uart4_filestream);
+    close(uartConnection); // close UART connection
     
     return 0;
 }
